@@ -94,8 +94,8 @@ FOVStroke.Parent = FOVCircle
 -- MINI CONTROL PANEL
 local Panel = Instance.new("Frame")
 Panel.Name = "AimControl"
-Panel.Size = UDim2.fromOffset(180, 112)
-Panel.Position = UDim2.new(0, 25, 0.5, -56)
+Panel.Size = UDim2.fromOffset(180, 140)
+Panel.Position = UDim2.new(0, 25, 0.5, -70)
 Panel.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 Panel.BorderSizePixel = 0
 Panel.Active = true
@@ -224,6 +224,114 @@ ESPButton.Parent = Panel
 local ESPButtonCorner = Instance.new("UICorner")
 ESPButtonCorner.CornerRadius = UDim.new(0, 5)
 ESPButtonCorner.Parent = ESPButton
+
+-- AMMO MODIFIER UI TOGGLE
+-- This toggle exposes a state for an authorized, server-controlled weapon system.
+-- A LocalScript cannot force server-owned ammo, reload, fire-rate, or recoil values.
+local AmmoModifierEnabled = false
+
+local AmmoButton = Instance.new("TextButton")
+AmmoButton.Name = "AmmoModifierToggle"
+AmmoButton.Position = UDim2.fromOffset(10, 106)
+AmmoButton.Size = UDim2.new(1, -20, 0, 25)
+AmmoButton.BackgroundColor3 = Color3.fromRGB(42, 44, 54)
+AmmoButton.BorderSizePixel = 0
+AmmoButton.AutoButtonColor = false
+AmmoButton.Text = "AMMO MODIFIER: OFF"
+AmmoButton.TextColor3 = Color3.fromRGB(205, 205, 215)
+AmmoButton.TextSize = 10
+AmmoButton.Font = Enum.Font.GothamBold
+AmmoButton.ZIndex = 12
+AmmoButton.Parent = Panel
+
+local AmmoButtonCorner = Instance.new("UICorner")
+AmmoButtonCorner.CornerRadius = UDim.new(0, 5)
+AmmoButtonCorner.Parent = AmmoButton
+
+local function SetAmmoModifier(enabled)
+    AmmoModifierEnabled = enabled
+    AmmoButton.Text = enabled and "CANCEL RELOAD: ON" or "CANCEL RELOAD: OFF"
+    AmmoButton.TextColor3 = enabled and Config.FOVColor
+        or Color3.fromRGB(205, 205, 215)
+    AmmoButton.BackgroundColor3 = enabled
+        and Color3.fromRGB(30, 55, 65)
+        or Color3.fromRGB(42, 44, 54)
+
+    -- For your own Roblox experience, connect this state to a RemoteEvent
+    -- and validate permissions/settings on the server before changing weapons.
+end
+
+AmmoButton.Activated:Connect(function()
+    SetAmmoModifier(not AmmoModifierEnabled)
+end)
+
+-- BACKPACK / EQUIPPED TOOL SCANNER
+-- Detects Tools and reports useful public attributes. It does not read or
+-- execute hidden scripts, and does not modify server-controlled weapon logic.
+local DetectedWeapons = {}
+local ScannerConnections = {}
+
+local function DescribeTool(tool)
+    local details = {}
+    for _, attributeName in ipairs({
+        "Ammo", "CurrentAmmo", "MaxAmmo", "ClipSize",
+        "ReloadTime", "FireRate", "Cooldown", "Recoil"
+    }) do
+        local value = tool:GetAttribute(attributeName)
+        if value ~= nil then
+            details[#details + 1] = attributeName .. "=" .. tostring(value)
+        end
+    end
+    return #details > 0 and table.concat(details, ", ") or "no recognized attributes"
+end
+
+local function RegisterTool(item)
+    if not item:IsA("Tool") then return end
+    DetectedWeapons[item] = true
+    print("[NOIR] Tool detected:", item:GetFullName(), "|", DescribeTool(item))
+end
+
+local function UnregisterTool(item)
+    if item:IsA("Tool") then
+        DetectedWeapons[item] = nil
+        print("[NOIR] Tool removed:", item.Name)
+    end
+end
+
+local function WatchContainer(container)
+    if not container then return end
+    for _, item in ipairs(container:GetChildren()) do
+        RegisterTool(item)
+    end
+    ScannerConnections[#ScannerConnections + 1] = container.ChildAdded:Connect(RegisterTool)
+    ScannerConnections[#ScannerConnections + 1] = container.ChildRemoved:Connect(UnregisterTool)
+end
+
+local function ScanPlayerWeapons()
+    for tool in pairs(DetectedWeapons) do
+        DetectedWeapons[tool] = nil
+    end
+    local backpack = Player:FindFirstChildOfClass("Backpack")
+    WatchContainer(backpack)
+    WatchContainer(Player.Character)
+    local count = 0
+    for tool in pairs(DetectedWeapons) do
+        if tool.Parent then count += 1 end
+    end
+    print(string.format("[NOIR] Backpack scan complete: %d Tool(s) detected.", count))
+end
+
+ScanPlayerWeapons()
+Player.CharacterAdded:Connect(function(character)
+    task.wait(0.5)
+    -- Rebind for the new character; disconnect old container listeners first.
+    for _, connection in ipairs(ScannerConnections) do
+        connection:Disconnect()
+    end
+    table.clear(ScannerConnections)
+    ScanPlayerWeapons()
+end)
+
 
 local function IsCharacterBodyPart(part, character)
     if not part:IsA("BasePart") or part.Name == "HumanoidRootPart" then
@@ -665,6 +773,9 @@ end)
 
 -- CLEANUP
 Connections.Destroy = GUI.Destroying:Connect(function()
+    for _, connection in ipairs(ScannerConnections) do
+        connection:Disconnect()
+    end
     Aiming = false
     Sliding = false
     Dragging = false
@@ -681,4 +792,4 @@ Connections.Destroy = GUI.Destroying:Connect(function()
     end
 end)
 
-print("[NOIR] Loaded. Hold RMB to aim, adjust strength, and toggle PLAYER ESP to show names, distance in studs, and individual limb hitboxes.")
+print("[NOIR] Loaded. Hold RMB to aim, adjust strength, and toggle PLAYER ESP, and automatically scan Backpack/equipped Tools.")
