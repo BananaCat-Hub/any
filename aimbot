@@ -34,6 +34,9 @@ local Config = {
     FOV = 160,
     Strength = 35,
 
+    PlayerESP = false,
+    ESPMaxDistance = 1000,
+
     TeamCheck = true,
     NPCCheck = false,
     VisibilityCheck = true,
@@ -48,6 +51,7 @@ local CurrentTarget = nil
 local Sliding = false
 local Dragging = false
 local ActivePointer = nil
+local ESPObjects = {}
 local DragStart = nil
 local StartPosition = nil
 local Connections = {}
@@ -90,8 +94,8 @@ FOVStroke.Parent = FOVCircle
 -- MINI CONTROL PANEL
 local Panel = Instance.new("Frame")
 Panel.Name = "AimControl"
-Panel.Size = UDim2.fromOffset(180, 82)
-Panel.Position = UDim2.new(0, 25, 0.5, -41)
+Panel.Size = UDim2.fromOffset(180, 112)
+Panel.Position = UDim2.new(0, 25, 0.5, -56)
 Panel.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 Panel.BorderSizePixel = 0
 Panel.Active = true
@@ -201,6 +205,163 @@ SliderButton.Active = true
 SliderButton.Selectable = false
 SliderButton.ZIndex = 10
 SliderButton.Parent = Slider
+
+-- PLAYER ESP TOGGLE
+local ESPButton = Instance.new("TextButton")
+ESPButton.Name = "PlayerESPToggle"
+ESPButton.Position = UDim2.fromOffset(10, 76)
+ESPButton.Size = UDim2.new(1, -20, 0, 25)
+ESPButton.BackgroundColor3 = Color3.fromRGB(42, 44, 54)
+ESPButton.BorderSizePixel = 0
+ESPButton.AutoButtonColor = false
+ESPButton.Text = "PLAYER ESP: OFF"
+ESPButton.TextColor3 = Color3.fromRGB(205, 205, 215)
+ESPButton.TextSize = 10
+ESPButton.Font = Enum.Font.GothamBold
+ESPButton.ZIndex = 12
+ESPButton.Parent = Panel
+
+local ESPButtonCorner = Instance.new("UICorner")
+ESPButtonCorner.CornerRadius = UDim.new(0, 5)
+ESPButtonCorner.Parent = ESPButton
+
+local function IsCharacterBodyPart(part, character)
+    if not part:IsA("BasePart") or part.Name == "HumanoidRootPart" then
+        return false
+    end
+
+    -- Ignore accessory handles and equipped tool parts; outline body parts only.
+    if part:FindFirstAncestorOfClass("Accessory")
+        or part:FindFirstAncestorOfClass("Tool") then
+        return false
+    end
+
+    return part:IsDescendantOf(character)
+end
+
+local function RemoveESP(player)
+    local objects = ESPObjects[player]
+    if objects then
+        if objects.Billboard then
+            objects.Billboard:Destroy()
+        end
+
+        for _, adornment in pairs(objects.Hitboxes or {}) do
+            adornment:Destroy()
+        end
+
+        ESPObjects[player] = nil
+    end
+end
+
+local function AddPartHitbox(player, part, objects)
+    if objects.Hitboxes[part] then
+        return
+    end
+
+    local hitbox = Instance.new("BoxHandleAdornment")
+    hitbox.Name = "NoirLimbHitbox_" .. player.UserId .. "_" .. part.Name
+    hitbox.Adornee = part
+    hitbox.Size = part.Size
+    hitbox.CFrame = CFrame.new()
+    hitbox.AlwaysOnTop = true
+    hitbox.ZIndex = 10
+    hitbox.Transparency = 0.55
+    hitbox.Color3 = Config.FOVColor
+    hitbox.Parent = workspace
+
+    objects.Hitboxes[part] = hitbox
+end
+
+local function CreateESP(player, character)
+    if player == Player or not character then
+        return
+    end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local head = character:FindFirstChild("Head")
+    local adornee = head or root
+    if not root or not adornee then
+        return
+    end
+
+    RemoveESP(player)
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "NoirPlayerESP_" .. player.UserId
+    billboard.Adornee = adornee
+    billboard.Size = UDim2.fromOffset(190, 34)
+    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.MaxDistance = Config.ESPMaxDistance
+    billboard.LightInfluence = 0
+    billboard.Parent = GUI
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Info"
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.BorderSizePixel = 0
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 13
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.TextStrokeTransparency = 0.15
+    label.Text = player.Name
+    label.Parent = billboard
+
+    local objects = {
+        Billboard = billboard,
+        Hitboxes = {},
+    }
+    ESPObjects[player] = objects
+
+    -- Add a separate outline to every actual character body part.
+    for _, descendant in ipairs(character:GetDescendants()) do
+        if IsCharacterBodyPart(descendant, character) then
+            AddPartHitbox(player, descendant, objects)
+        end
+    end
+end
+
+local function SetESPEnabled(enabled)
+    Config.PlayerESP = enabled
+    ESPButton.Text = enabled and "PLAYER ESP: ON" or "PLAYER ESP: OFF"
+    ESPButton.TextColor3 = enabled and Config.FOVColor
+        or Color3.fromRGB(205, 205, 215)
+    ESPButton.BackgroundColor3 = enabled
+        and Color3.fromRGB(30, 55, 65)
+        or Color3.fromRGB(42, 44, 54)
+
+    if enabled then
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= Player and targetPlayer.Character then
+                CreateESP(targetPlayer, targetPlayer.Character)
+            end
+        end
+    else
+        for targetPlayer in pairs(ESPObjects) do
+            RemoveESP(targetPlayer)
+        end
+    end
+end
+
+ESPButton.Activated:Connect(function()
+    SetESPEnabled(not Config.PlayerESP)
+end)
+
+Players.PlayerAdded:Connect(function(targetPlayer)
+    targetPlayer.CharacterAdded:Connect(function(character)
+        if Config.PlayerESP then
+            task.wait(0.25)
+            CreateESP(targetPlayer, character)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(targetPlayer)
+    RemoveESP(targetPlayer)
+end)
 
 -- SLIDER LOGIC
 local function UpdateStrength(screenX)
@@ -412,6 +573,71 @@ Connections.Render = RunService.RenderStepped:Connect(function()
     )
     FOVCircle.Visible = Config.ShowFOV
 
+    -- Keep ESP labels synced to each player's current world position.
+    if Config.PlayerESP then
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= Player then
+                local character = targetPlayer.Character
+                local root = character and (
+                    character:FindFirstChild("HumanoidRootPart")
+                    or character:FindFirstChild("Head")
+                )
+
+                if root then
+                    local objects = ESPObjects[targetPlayer]
+                    if not objects or not objects.Billboard
+                        or not objects.Billboard.Parent
+                        or objects.Billboard.Adornee ~= (
+                            character:FindFirstChild("Head") or root
+                        ) then
+                        CreateESP(targetPlayer, character)
+                        objects = ESPObjects[targetPlayer]
+                    end
+
+                    if objects then
+                        local label = objects.Billboard:FindFirstChild("Info")
+                        if label then
+                            local myCharacter = Player.Character
+                            local myRoot = myCharacter
+                                and myCharacter:FindFirstChild("HumanoidRootPart")
+                            local distance = myRoot
+                                and (myRoot.Position - root.Position).Magnitude
+                                or 0
+
+                            label.Text = string.format(
+                                "%s  |  %.0f studs",
+                                targetPlayer.Name,
+                                distance
+                            )
+                        end
+
+                        -- Reconcile the limb outlines in case body parts were added,
+                        -- removed, or replaced by a respawn/custom character rig.
+                        for _, descendant in ipairs(character:GetDescendants()) do
+                            if IsCharacterBodyPart(descendant, character) then
+                                AddPartHitbox(targetPlayer, descendant, objects)
+                            end
+                        end
+
+                        for part, adornment in pairs(objects.Hitboxes) do
+                            if not part.Parent
+                                or not part:IsDescendantOf(character)
+                                or not IsCharacterBodyPart(part, character) then
+                                adornment:Destroy()
+                                objects.Hitboxes[part] = nil
+                            else
+                                -- Keep the outline dimensions matched to the actual part.
+                                adornment.Size = part.Size
+                            end
+                        end
+                    end
+                else
+                    RemoveESP(targetPlayer)
+                end
+            end
+        end
+    end
+
     if not Config.Enabled or not Aiming then
         CurrentTarget = nil
         return
@@ -444,6 +670,10 @@ Connections.Destroy = GUI.Destroying:Connect(function()
     Dragging = false
     CurrentTarget = nil
 
+    for targetPlayer in pairs(ESPObjects) do
+        RemoveESP(targetPlayer)
+    end
+
     for _, connection in pairs(Connections) do
         if connection.Connected then
             connection:Disconnect()
@@ -451,4 +681,4 @@ Connections.Destroy = GUI.Destroying:Connect(function()
     end
 end)
 
-print("[NOIR] Loaded. Hold RMB to aim; drag the slider to change strength.")
+print("[NOIR] Loaded. Hold RMB to aim, adjust strength, and toggle PLAYER ESP to show names, distance in studs, and individual limb hitboxes.")
