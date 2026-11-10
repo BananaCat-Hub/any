@@ -1,0 +1,454 @@
+--[[
+    NOIR AIM SYSTEM
+    Single LocalScript for a Roblox Studio experience you own or are authorized to test.
+
+    Controls:
+      Hold RMB = aim
+      Release RMB = stop
+      Drag title bar = move panel
+      Drag slider = adjust aim strength (1-100%)
+
+    Slider fix:
+      - Uses a transparent TextButton as the actual input surface.
+      - Uses the same screen-space InputObject.Position coordinates throughout.
+      - Tracks the initiating mouse/touch input until it ends.
+      - Keeps the visual knob non-interactive so it cannot steal slider clicks.
+]]
+
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+-- PLAYER
+local Player = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- CONFIGURATION
+local Config = {
+    Enabled = true,
+    AimKey = Enum.UserInputType.MouseButton2,
+
+    TargetPart = "Head",
+    FOV = 160,
+    Strength = 35,
+
+    TeamCheck = true,
+    NPCCheck = false,
+    VisibilityCheck = true,
+
+    ShowFOV = true,
+    FOVColor = Color3.fromRGB(0, 170, 255),
+}
+
+-- STATE
+local Aiming = false
+local CurrentTarget = nil
+local Sliding = false
+local Dragging = false
+local ActivePointer = nil
+local DragStart = nil
+local StartPosition = nil
+local Connections = {}
+
+-- Clean up an older copy if the script is re-run
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local ExistingGui = PlayerGui:FindFirstChild("NoirAimUI")
+if ExistingGui then
+    ExistingGui:Destroy()
+end
+
+-- GUI ROOT
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "NoirAimUI"
+GUI.ResetOnSpawn = false
+GUI.IgnoreGuiInset = true
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+GUI.Parent = PlayerGui
+
+-- FOV CIRCLE
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircle.Size = UDim2.fromOffset(Config.FOV * 2, Config.FOV * 2)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = Config.ShowFOV
+FOVCircle.Active = false
+FOVCircle.Parent = GUI
+
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Parent = FOVCircle
+
+local FOVStroke = Instance.new("UIStroke")
+FOVStroke.Color = Config.FOVColor
+FOVStroke.Thickness = 1.5
+FOVStroke.Parent = FOVCircle
+
+-- MINI CONTROL PANEL
+local Panel = Instance.new("Frame")
+Panel.Name = "AimControl"
+Panel.Size = UDim2.fromOffset(180, 82)
+Panel.Position = UDim2.new(0, 25, 0.5, -41)
+Panel.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+Panel.BorderSizePixel = 0
+Panel.Active = true
+Panel.Parent = GUI
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 8)
+PanelCorner.Parent = Panel
+
+local PanelStroke = Instance.new("UIStroke")
+PanelStroke.Color = Config.FOVColor
+PanelStroke.Thickness = 1
+PanelStroke.Parent = Panel
+
+-- TITLE BAR
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, 0, 0, 27)
+Title.BackgroundColor3 = Color3.fromRGB(29, 30, 39)
+Title.BorderSizePixel = 0
+Title.Text = "  NOIR  |  AIM CONTROL"
+Title.TextColor3 = Config.FOVColor
+Title.TextSize = 11
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Active = true
+Title.Parent = Panel
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 8)
+TitleCorner.Parent = Title
+
+-- STRENGTH LABEL
+local StrengthLabel = Instance.new("TextLabel")
+StrengthLabel.Position = UDim2.fromOffset(9, 32)
+StrengthLabel.Size = UDim2.fromOffset(80, 16)
+StrengthLabel.BackgroundTransparency = 1
+StrengthLabel.Text = "AIM STRENGTH"
+StrengthLabel.TextColor3 = Color3.fromRGB(220, 220, 225)
+StrengthLabel.TextSize = 9
+StrengthLabel.Font = Enum.Font.GothamBold
+StrengthLabel.TextXAlignment = Enum.TextXAlignment.Left
+StrengthLabel.Parent = Panel
+
+-- PERCENTAGE LABEL
+local Percentage = Instance.new("TextLabel")
+Percentage.Position = UDim2.new(1, -43, 0, 32)
+Percentage.Size = UDim2.fromOffset(34, 16)
+Percentage.BackgroundTransparency = 1
+Percentage.TextColor3 = Config.FOVColor
+Percentage.TextSize = 10
+Percentage.Font = Enum.Font.GothamBold
+Percentage.Parent = Panel
+
+-- SLIDER TRACK (visual)
+local Slider = Instance.new("Frame")
+Slider.Name = "Slider"
+Slider.Position = UDim2.fromOffset(10, 57)
+Slider.Size = UDim2.new(1, -20, 0, 7)
+Slider.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+Slider.BorderSizePixel = 0
+Slider.Active = false
+Slider.Parent = Panel
+
+local SliderCorner = Instance.new("UICorner")
+SliderCorner.CornerRadius = UDim.new(1, 0)
+SliderCorner.Parent = Slider
+
+-- FILL
+local Fill = Instance.new("Frame")
+Fill.Name = "Fill"
+Fill.Size = UDim2.fromScale(Config.Strength / 100, 1)
+Fill.BackgroundColor3 = Config.FOVColor
+Fill.BorderSizePixel = 0
+Fill.Active = false
+Fill.Parent = Slider
+
+local FillCorner = Instance.new("UICorner")
+FillCorner.CornerRadius = UDim.new(1, 0)
+FillCorner.Parent = Fill
+
+-- KNOB (visual only; it must not capture input)
+local Knob = Instance.new("Frame")
+Knob.Name = "Knob"
+Knob.AnchorPoint = Vector2.new(0.5, 0.5)
+Knob.Position = UDim2.fromScale(Config.Strength / 100, 0.5)
+Knob.Size = UDim2.fromOffset(12, 12)
+Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Knob.BorderSizePixel = 0
+Knob.Active = false
+Knob.Parent = Slider
+
+local KnobCorner = Instance.new("UICorner")
+KnobCorner.CornerRadius = UDim.new(1, 0)
+KnobCorner.Parent = Knob
+
+-- REAL INPUT SURFACE: sits above the visual slider and receives every click
+local SliderButton = Instance.new("TextButton")
+SliderButton.Name = "SliderInput"
+SliderButton.Position = UDim2.fromScale(0, 0.5)
+SliderButton.AnchorPoint = Vector2.new(0, 0.5)
+SliderButton.Size = UDim2.new(1, 0, 0, 24)
+SliderButton.BackgroundTransparency = 1
+SliderButton.Text = ""
+SliderButton.AutoButtonColor = false
+SliderButton.Active = true
+SliderButton.Selectable = false
+SliderButton.ZIndex = 10
+SliderButton.Parent = Slider
+
+-- SLIDER LOGIC
+local function UpdateStrength(screenX)
+    local width = Slider.AbsoluteSize.X
+    if width <= 0 then
+        return
+    end
+
+    local relativeX = math.clamp(
+        (screenX - Slider.AbsolutePosition.X) / width,
+        0,
+        1
+    )
+
+    Config.Strength = math.clamp(
+        math.floor(relativeX * 100 + 0.5),
+        1,
+        100
+    )
+
+    local normalized = Config.Strength / 100
+    Fill.Size = UDim2.new(normalized, 0, 1, 0)
+    Knob.Position = UDim2.new(normalized, 0, 0.5, 0)
+    Percentage.Text = string.format("%d%%", Config.Strength)
+end
+
+Percentage.Text = string.format("%d%%", Config.Strength)
+
+local function IsPointerInput(input)
+    return input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+end
+
+SliderButton.InputBegan:Connect(function(input)
+    if not IsPointerInput(input) then
+        return
+    end
+
+    Sliding = true
+    ActivePointer = input
+    UpdateStrength(input.Position.X)
+end)
+
+-- TARGET VALIDATION
+local function IsValidTarget(character)
+    if not character or character == Player.Character then
+        return false
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local part = character:FindFirstChild(Config.TargetPart)
+
+    if not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+
+    if not part or not part:IsA("BasePart") then
+        return false
+    end
+
+    local targetPlayer = Players:GetPlayerFromCharacter(character)
+
+    if targetPlayer then
+        if Config.TeamCheck
+            and Player.Team ~= nil
+            and targetPlayer.Team == Player.Team then
+            return false
+        end
+    elseif not Config.NPCCheck then
+        return false
+    end
+
+    return true
+end
+
+-- VISIBILITY CHECK
+local function IsVisible(character, part)
+    if not Config.VisibilityCheck then
+        return true
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {
+        Player.Character,
+    }
+
+    local origin = Camera.CFrame.Position
+    local direction = part.Position - origin
+    local result = Workspace:Raycast(origin, direction, params)
+
+    return result ~= nil and result.Instance:IsDescendantOf(character)
+end
+
+-- FIND CLOSEST TARGET
+local function GetClosestTarget()
+    local mousePosition = UserInputService:GetMouseLocation()
+    local closestPart = nil
+    local shortestDistance = Config.FOV
+
+    local function CheckCharacter(character)
+        if not IsValidTarget(character) then
+            return
+        end
+
+        local part = character:FindFirstChild(Config.TargetPart)
+        local screenPosition, onScreen =
+            Camera:WorldToViewportPoint(part.Position)
+
+        if not onScreen then
+            return
+        end
+
+        local distance = (
+            Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition
+        ).Magnitude
+
+        if distance < shortestDistance and IsVisible(character, part) then
+            shortestDistance = distance
+            closestPart = part
+        end
+    end
+
+    for _, targetPlayer in ipairs(Players:GetPlayers()) do
+        if targetPlayer ~= Player then
+            CheckCharacter(targetPlayer.Character)
+        end
+    end
+
+    if Config.NPCCheck then
+        for _, model in ipairs(Workspace:GetChildren()) do
+            if model:IsA("Model")
+                and not Players:GetPlayerFromCharacter(model) then
+                CheckCharacter(model)
+            end
+        end
+    end
+
+    return closestPart
+end
+
+-- INPUT: AIM + PANEL DRAG
+Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
+    if input.UserInputType == Config.AimKey and not processed then
+        Aiming = true
+    end
+end)
+
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        Dragging = true
+        DragStart = input.Position
+        StartPosition = Panel.Position
+        ActivePointer = input
+    end
+end)
+
+Connections.InputChanged = UserInputService.InputChanged:Connect(function(input)
+    if Sliding then
+        local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchMove = ActivePointer
+            and ActivePointer.UserInputType == Enum.UserInputType.Touch
+            and input == ActivePointer
+
+        if isMouseMove or isTouchMove then
+            UpdateStrength(input.Position.X)
+        end
+    end
+
+    if Dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - DragStart
+        Panel.Position = UDim2.new(
+            StartPosition.X.Scale,
+            StartPosition.X.Offset + delta.X,
+            StartPosition.Y.Scale,
+            StartPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+Connections.InputEnded = UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Config.AimKey then
+        Aiming = false
+        CurrentTarget = nil
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        Sliding = false
+        Dragging = false
+        ActivePointer = nil
+    end
+end)
+
+-- MAIN AIM LOOP
+Connections.Render = RunService.RenderStepped:Connect(function()
+    Camera = Workspace.CurrentCamera
+    if not Camera then
+        return
+    end
+
+    FOVCircle.Position = UDim2.fromOffset(
+        Camera.ViewportSize.X / 2,
+        Camera.ViewportSize.Y / 2
+    )
+    FOVCircle.Visible = Config.ShowFOV
+
+    if not Config.Enabled or not Aiming then
+        CurrentTarget = nil
+        return
+    end
+
+    if not CurrentTarget
+        or not CurrentTarget.Parent
+        or not IsValidTarget(CurrentTarget.Parent) then
+        CurrentTarget = GetClosestTarget()
+    end
+
+    if not CurrentTarget then
+        return
+    end
+
+    -- 1% = very gradual, 100% = immediate camera alignment
+    local alpha = math.clamp(Config.Strength / 100, 0.01, 1)
+    local desiredCFrame = CFrame.lookAt(
+        Camera.CFrame.Position,
+        CurrentTarget.Position
+    )
+
+    Camera.CFrame = Camera.CFrame:Lerp(desiredCFrame, alpha)
+end)
+
+-- CLEANUP
+Connections.Destroy = GUI.Destroying:Connect(function()
+    Aiming = false
+    Sliding = false
+    Dragging = false
+    CurrentTarget = nil
+
+    for _, connection in pairs(Connections) do
+        if connection.Connected then
+            connection:Disconnect()
+        end
+    end
+end)
+
+print("[NOIR] Loaded. Hold RMB to aim; drag the slider to change strength.")
